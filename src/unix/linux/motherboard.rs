@@ -10,39 +10,49 @@ impl MotherboardInner {
     }
 
     pub(crate) fn asset_tag(&self) -> Option<String> {
-        read_to_string("/sys/devices/virtual/dmi/id/board_asset_tag")
-            .ok()
-            .map(|s| s.trim().to_owned())
+        read_to_string(super::utils::path_with_prefix(
+            "/sys/devices/virtual/dmi/id/board_asset_tag",
+        ))
+        .ok()
+        .map(|s| s.trim().to_owned())
     }
 
     pub(crate) fn name(&self) -> Option<String> {
-        read_to_string("/sys/devices/virtual/dmi/id/board_name")
-            .ok()
-            .or_else(|| {
-                read_to_string("/proc/device-tree/board")
-                    .ok()
-                    .or_else(|| Some(parse_device_tree_compatible()?.1))
-            })
-            .map(|s| s.trim().to_owned())
+        read_to_string(super::utils::path_with_prefix(
+            "/sys/devices/virtual/dmi/id/board_name",
+        ))
+        .ok()
+        .or_else(|| {
+            read_to_string(super::utils::path_with_prefix("/proc/device-tree/board"))
+                .ok()
+                .or_else(|| Some(parse_device_tree_compatible()?.1))
+        })
+        .map(|s| s.trim().to_owned())
     }
 
     pub(crate) fn vendor_name(&self) -> Option<String> {
-        read_to_string("/sys/devices/virtual/dmi/id/board_vendor")
-            .ok()
-            .or_else(|| Some(parse_device_tree_compatible()?.0))
-            .map(|s| s.trim().to_owned())
+        read_to_string(super::utils::path_with_prefix(
+            "/sys/devices/virtual/dmi/id/board_vendor",
+        ))
+        .ok()
+        .or_else(|| Some(parse_device_tree_compatible()?.0))
+        .map(|s| s.trim().to_owned())
     }
 
     pub(crate) fn version(&self) -> Option<String> {
-        read_to_string("/sys/devices/virtual/dmi/id/board_version")
-            .ok()
-            .map(|s| s.trim().to_owned())
+        read_to_string(super::utils::path_with_prefix(
+            "/sys/devices/virtual/dmi/id/board_version",
+        ))
+        .ok()
+        .map(|s| s.trim().to_owned())
     }
 
     pub(crate) fn serial_number(&self) -> Option<String> {
-        read_to_string("/sys/devices/virtual/dmi/id/board_serial")
-            .ok()
-            .map(|s| s.trim().to_owned())
+        read_to_string(super::utils::path_with_prefix(
+            "/sys/devices/virtual/dmi/id/board_serial",
+        ))
+        .ok()
+        .map(|s| s.trim().to_owned())
     }
 }
 
@@ -53,7 +63,10 @@ impl MotherboardInner {
 // According to the specification: https://github.com/devicetree-org/devicetree-specification
 // a compatible string must contain only one comma.
 fn parse_device_tree_compatible() -> Option<(String, String)> {
-    let bytes = read("/proc/device-tree/compatible").ok()?;
+    let bytes = read(super::utils::path_with_prefix(
+        "/proc/device-tree/compatible",
+    ))
+    .ok()?;
     let first_line = bytes.split(|&b| b == 0).next()?;
     std::str::from_utf8(first_line)
         .ok()?

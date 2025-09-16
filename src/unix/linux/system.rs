@@ -114,7 +114,7 @@ pub const SUPPORTED_SIGNALS: &[crate::Signal] = supported_signals();
 pub const MINIMUM_CPU_UPDATE_INTERVAL: Duration = Duration::from_millis(200);
 
 fn boot_time() -> u64 {
-    if let Ok(buf) = File::open("/proc/stat").and_then(|mut f| {
+    if let Ok(buf) = File::open(super::utils::path_with_prefix("/proc/stat")).and_then(|mut f| {
         let mut buf = Vec::new();
         f.read_to_end(&mut buf)?;
         Ok(buf)
@@ -234,25 +234,31 @@ impl SystemInner {
             return;
         }
         let mut mem_available_found = false;
-        read_table("/proc/meminfo", ':', |key, value_kib| {
-            let field = match key {
-                "MemTotal" => &mut self.mem_total,
-                "MemFree" => &mut self.mem_free,
-                "MemAvailable" => {
-                    mem_available_found = true;
-                    &mut self.mem_available
-                }
-                "Buffers" => &mut self.mem_buffers,
-                "Cached" => &mut self.mem_page_cache,
-                "Shmem" => &mut self.mem_shmem,
-                "SReclaimable" => &mut self.mem_slab_reclaimable,
-                "SwapTotal" => &mut self.swap_total,
-                "SwapFree" => &mut self.swap_free,
-                _ => return,
-            };
-            // /proc/meminfo reports KiB, though it says "kB". Convert it.
-            *field = value_kib.saturating_mul(1_024);
-        });
+        read_table(
+            super::utils::path_with_prefix("/proc/meminfo")
+                .to_str()
+                .unwrap(),
+            ':',
+            |key, value_kib| {
+                let field = match key {
+                    "MemTotal" => &mut self.mem_total,
+                    "MemFree" => &mut self.mem_free,
+                    "MemAvailable" => {
+                        mem_available_found = true;
+                        &mut self.mem_available
+                    }
+                    "Buffers" => &mut self.mem_buffers,
+                    "Cached" => &mut self.mem_page_cache,
+                    "Shmem" => &mut self.mem_shmem,
+                    "SReclaimable" => &mut self.mem_slab_reclaimable,
+                    "SwapTotal" => &mut self.swap_total,
+                    "SwapFree" => &mut self.swap_free,
+                    _ => return,
+                };
+                // /proc/meminfo reports KiB, though it says "kB". Convert it.
+                *field = value_kib.saturating_mul(1_024);
+            },
+        );
 
         // Linux < 3.14 may not have MemAvailable in /proc/meminfo
         // So it should fallback to the old way of estimating available memory
@@ -283,7 +289,7 @@ impl SystemInner {
         let uptime = Self::uptime();
         let nb_updated = refresh_procs(
             &mut self.process_list,
-            Path::new("/proc"),
+            Path::new(&super::utils::path_with_prefix("/proc")),
             uptime,
             &self.info,
             processes_to_update,
@@ -347,7 +353,8 @@ impl SystemInner {
     }
 
     pub(crate) fn uptime() -> u64 {
-        let content = get_all_utf8_data("/proc/uptime", 50).unwrap_or_default();
+        let content = get_all_utf8_data(super::utils::path_with_prefix("/proc/uptime"), 50)
+            .unwrap_or_default();
         content
             .split('.')
             .next()
@@ -361,7 +368,7 @@ impl SystemInner {
 
     pub(crate) fn load_average() -> LoadAvg {
         let mut s = String::new();
-        if File::open("/proc/loadavg")
+        if File::open(super::utils::path_with_prefix("/proc/loadavg"))
             .and_then(|mut f| f.read_to_string(&mut s))
             .is_err()
         {
@@ -384,8 +391,8 @@ impl SystemInner {
     pub(crate) fn name() -> Option<String> {
         get_system_info_linux(
             InfoType::Name,
-            Path::new("/etc/os-release"),
-            Path::new("/etc/lsb-release"),
+            Path::new(&super::utils::path_with_prefix("/etc/os-release")),
+            Path::new(&super::utils::path_with_prefix("/etc/lsb-release")),
         )
     }
 
@@ -479,8 +486,8 @@ impl SystemInner {
     pub(crate) fn os_version() -> Option<String> {
         get_system_info_linux(
             InfoType::OsVersion,
-            Path::new("/etc/os-release"),
-            Path::new("/etc/lsb-release"),
+            Path::new(&super::utils::path_with_prefix("/etc/os-release")),
+            Path::new(&super::utils::path_with_prefix("/etc/lsb-release")),
         )
     }
 
@@ -493,7 +500,7 @@ impl SystemInner {
     pub(crate) fn distribution_id() -> String {
         get_system_info_linux(
             InfoType::DistributionID,
-            Path::new("/etc/os-release"),
+            Path::new(&super::utils::path_with_prefix("/etc/os-release")),
             Path::new(""),
         )
         .unwrap_or_else(|| std::env::consts::OS.to_owned())
@@ -512,7 +519,7 @@ impl SystemInner {
     pub(crate) fn distribution_id_like() -> Vec<String> {
         system_info_as_list(get_system_info_linux(
             InfoType::DistributionIDLike,
-            Path::new("/etc/os-release"),
+            Path::new(&super::utils::path_with_prefix("/etc/os-release")),
             Path::new(""),
         ))
     }
@@ -635,10 +642,25 @@ impl crate::CGroupLimits {
         );
         if let (Some(mem_cur), Some(mem_max), Some(mem_rss)) = (
             // cgroups v2
-            read_u64("/sys/fs/cgroup/memory.current"),
+            read_u64(
+                super::utils::path_with_prefix("/sys/fs/cgroup/memory.current")
+                    .to_str()
+                    .unwrap(),
+            ),
             // memory.max contains `max` when no limit is set.
-            read_u64("/sys/fs/cgroup/memory.max").or(Some(u64::MAX)),
-            read_table_key("/sys/fs/cgroup/memory.stat", "anon", ' '),
+            read_u64(
+                super::utils::path_with_prefix("/sys/fs/cgroup/memory.max")
+                    .to_str()
+                    .unwrap(),
+            )
+            .or(Some(u64::MAX)),
+            read_table_key(
+                super::utils::path_with_prefix("/sys/fs/cgroup/memory.stat")
+                    .to_str()
+                    .unwrap(),
+                "anon",
+                ' ',
+            ),
         ) {
             let mut limits = Self {
                 total_memory: sys.mem_total,
@@ -650,16 +672,34 @@ impl crate::CGroupLimits {
             limits.total_memory = min(mem_max, sys.mem_total);
             limits.free_memory = limits.total_memory.saturating_sub(mem_cur);
 
-            if let Some(swap_cur) = read_u64("/sys/fs/cgroup/memory.swap.current") {
+            if let Some(swap_cur) = read_u64(
+                super::utils::path_with_prefix("/sys/fs/cgroup/memory.swap.current")
+                    .to_str()
+                    .unwrap(),
+            ) {
                 limits.free_swap = sys.swap_total.saturating_sub(swap_cur);
             }
 
             Some(limits)
         } else if let (Some(mem_cur), Some(mem_max), Some(mem_rss)) = (
             // cgroups v1
-            read_u64("/sys/fs/cgroup/memory/memory.usage_in_bytes"),
-            read_u64("/sys/fs/cgroup/memory/memory.limit_in_bytes"),
-            read_table_key("/sys/fs/cgroup/memory/memory.stat", "total_rss", ' '),
+            read_u64(
+                super::utils::path_with_prefix("/sys/fs/cgroup/memory/memory.usage_in_bytes")
+                    .to_str()
+                    .unwrap(),
+            ),
+            read_u64(
+                super::utils::path_with_prefix("/sys/fs/cgroup/memory/memory.limit_in_bytes")
+                    .to_str()
+                    .unwrap(),
+            ),
+            read_table_key(
+                super::utils::path_with_prefix("/sys/fs/cgroup/memory/memory.stat")
+                    .to_str()
+                    .unwrap(),
+                "total_rss",
+                ' ',
+            ),
         ) {
             let mut limits = Self {
                 total_memory: sys.mem_total,

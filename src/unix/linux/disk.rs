@@ -154,7 +154,8 @@ impl crate::DisksInner {
     ) {
         get_all_list(
             &mut self.disks,
-            &get_all_utf8_data("/proc/mounts", 16_385).unwrap_or_default(),
+            &get_all_utf8_data(super::utils::path_with_prefix("/proc/mounts"), 16_385)
+                .unwrap_or_default(),
             refresh_kind,
         );
 
@@ -194,7 +195,11 @@ fn get_actual_device_name(device: &OsStr) -> String {
 
     std::fs::canonicalize(&device_path)
         .ok()
-        .and_then(|path| path.strip_prefix("/dev").ok().map(Path::to_path_buf))
+        .and_then(|path| {
+            path.strip_prefix(super::utils::path_with_prefix("/dev"))
+                .ok()
+                .map(Path::to_path_buf)
+        })
         .unwrap_or(device_path)
         .to_str()
         .map(str::to_owned)
@@ -279,41 +284,82 @@ fn find_type_for_device_name(device_name: &OsStr) -> DiskKind {
     let device_name_path = device_name.to_str().unwrap_or_default();
     let real_path = fs::canonicalize(device_name).unwrap_or_else(|_| PathBuf::from(device_name));
     let mut real_path = real_path.to_str().unwrap_or_default();
-    if device_name_path.starts_with("/dev/mapper/") {
+    if device_name_path.starts_with(
+        super::utils::path_with_prefix("/dev/mapper/")
+            .to_str()
+            .unwrap(),
+    ) {
         // Recursively solve, for example /dev/dm-0
         if real_path != device_name_path {
             return find_type_for_device_name(OsStr::new(&real_path));
         }
-    } else if device_name_path.starts_with("/dev/sd") || device_name_path.starts_with("/dev/vd") {
+    } else if device_name_path
+        .starts_with(super::utils::path_with_prefix("/dev/sd").to_str().unwrap())
+        || device_name_path.starts_with(super::utils::path_with_prefix("/dev/vd").to_str().unwrap())
+    {
         // Turn "sda1" into "sda" or "vda1" into "vda"
-        real_path = real_path.trim_start_matches("/dev/");
+        real_path =
+            real_path.trim_start_matches(super::utils::path_with_prefix("/dev/").to_str().unwrap());
         real_path = real_path.trim_end_matches(|c| c >= '0' && c <= '9');
-    } else if device_name_path.starts_with("/dev/nvme") {
+    } else if device_name_path.starts_with(
+        super::utils::path_with_prefix("/dev/nvme")
+            .to_str()
+            .unwrap(),
+    ) {
         // Turn "nvme0n1p1" into "nvme0n1"
         real_path = match real_path.find('p') {
-            Some(idx) => &real_path["/dev/".len()..idx],
-            None => &real_path["/dev/".len()..],
+            Some(idx) => {
+                &real_path[super::utils::path_with_prefix("/dev/")
+                    .to_str()
+                    .unwrap()
+                    .len()..idx]
+            }
+            None => {
+                &real_path[super::utils::path_with_prefix("/dev/")
+                    .to_str()
+                    .unwrap()
+                    .len()..]
+            }
         };
-    } else if device_name_path.starts_with("/dev/root") {
+    } else if device_name_path.starts_with(
+        super::utils::path_with_prefix("/dev/root")
+            .to_str()
+            .unwrap(),
+    ) {
         // Recursively solve, for example /dev/mmcblk0p1
         if real_path != device_name_path {
             return find_type_for_device_name(OsStr::new(&real_path));
         }
-    } else if device_name_path.starts_with("/dev/mmcblk") {
+    } else if device_name_path.starts_with(
+        super::utils::path_with_prefix("/dev/mmcblk")
+            .to_str()
+            .unwrap(),
+    ) {
         // Turn "mmcblk0p1" into "mmcblk0"
         real_path = match real_path.find('p') {
-            Some(idx) => &real_path["/dev/".len()..idx],
-            None => &real_path["/dev/".len()..],
+            Some(idx) => {
+                &real_path[super::utils::path_with_prefix("/dev/")
+                    .to_str()
+                    .unwrap()
+                    .len()..idx]
+            }
+            None => {
+                &real_path[super::utils::path_with_prefix("/dev/")
+                    .to_str()
+                    .unwrap()
+                    .len()..]
+            }
         };
     } else {
         // Default case: remove /dev/ and expects the name presents under /sys/block/
         // For example, /dev/dm-0 to dm-0
-        real_path = real_path.trim_start_matches("/dev/");
+        real_path =
+            real_path.trim_start_matches(super::utils::path_with_prefix("/dev/").to_str().unwrap());
     }
 
     let trimmed: &OsStr = OsStrExt::from_bytes(real_path.as_bytes());
 
-    let path = Path::new("/sys/block/")
+    let path = Path::new(&super::utils::path_with_prefix("/sys/block/"))
         .to_owned()
         .join(trimmed)
         .join("queue/rotational");
@@ -338,7 +384,7 @@ fn find_type_for_device_name(device_name: &OsStr) -> DiskKind {
 fn get_all_list(container: &mut Vec<Disk>, content: &str, refresh_kind: DiskRefreshKind) {
     // The goal of this array is to list all removable devices (the ones whose name starts with
     // "usb-").
-    let removable_entries = match fs::read_dir("/dev/disk/by-id/") {
+    let removable_entries = match fs::read_dir(super::utils::path_with_prefix("/dev/disk/by-id/")) {
         Ok(r) => r
             .filter_map(|res| Some(res.ok()?.path()))
             .filter_map(|e| {
@@ -400,9 +446,9 @@ fn get_all_list(container: &mut Vec<Disk>, content: &str, refresh_kind: DiskRefr
             };
 
             !(filtered ||
-               fs_file.starts_with("/sys") || // check if fs_file is an 'ignored' mount point
-               fs_file.starts_with("/proc") ||
-               (fs_file.starts_with("/run") && !fs_file.starts_with("/run/media")) ||
+               fs_file.starts_with(super::utils::path_with_prefix("/sys").to_str().unwrap()) || // check if fs_file is an 'ignored' mount point
+               fs_file.starts_with(super::utils::path_with_prefix("/proc").to_str().unwrap()) ||
+               (fs_file.starts_with(super::utils::path_with_prefix("/run").to_str().unwrap()) && !fs_file.starts_with(super::utils::path_with_prefix("/run/media").to_str().unwrap())) ||
                fs_spec.starts_with("sunrpc"))
         })
     {
@@ -482,7 +528,7 @@ impl DiskStat {
 
 fn disk_stats(refresh_kind: &DiskRefreshKind) -> HashMap<String, DiskStat> {
     if refresh_kind.io_usage() {
-        let path = "/proc/diskstats";
+        let path = super::utils::path_with_prefix("/proc/diskstats");
         match fs::read_to_string(path) {
             Ok(content) => disk_stats_inner(&content),
             Err(_error) => {

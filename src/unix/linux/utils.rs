@@ -104,3 +104,12 @@ pub(crate) fn to_cpath(path: &std::path::Path) -> Vec<u8> {
     cpath.push(0);
     cpath
 }
+
+pub fn path_with_prefix(p: impl AsRef<std::path::Path>) -> std::path::PathBuf {
+    use std::sync::OnceLock;
+
+    static PREFIX: OnceLock<String> = OnceLock::new();
+
+    Path::new(PREFIX.get_or_init(|| std::env::var("ALTERNATIVE_PREFIX").unwrap_or_default()))
+        .join(p)
+}

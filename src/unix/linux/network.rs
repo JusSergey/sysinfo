@@ -147,7 +147,7 @@ impl NetworksInner {
         refresh_networks_list_from_sysfs(
             &mut self.interfaces,
             remove_not_listed_interfaces,
-            Path::new("/sys/class/net/"),
+            Path::new(&super::utils::path_with_prefix("/sys/class/net/")),
         );
         refresh_networks_addresses(&mut self.interfaces);
     }

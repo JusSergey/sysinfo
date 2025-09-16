@@ -59,7 +59,7 @@ impl CpusWrapper {
         // we don't want to update CPUs times.
         if need_cpu_usage_update {
             self.last_update = Some(Instant::now());
-            let f = match File::open("/proc/stat") {
+            let f = match File::open(super::utils::path_with_prefix("/proc/stat")) {
                 Ok(f) => f,
                 Err(_e) => {
                     sysinfo_debug!("failed to retrieve CPU information: {:?}", _e);
@@ -440,9 +440,9 @@ impl CpuInner {
 
 pub(crate) fn get_cpu_frequency(cpu_core_index: usize) -> u64 {
     let mut s = String::new();
-    if File::open(format!(
+    if File::open(super::utils::path_with_prefix(format!(
         "/sys/devices/system/cpu/cpu{cpu_core_index}/cpufreq/scaling_cur_freq",
-    ))
+    )))
     .and_then(|mut f| f.read_to_string(&mut s))
     .is_ok()
     {
@@ -454,7 +454,7 @@ pub(crate) fn get_cpu_frequency(cpu_core_index: usize) -> u64 {
         }
     }
     s.clear();
-    if File::open("/proc/cpuinfo")
+    if File::open(super::utils::path_with_prefix("/proc/cpuinfo"))
         .and_then(|mut f| f.read_to_string(&mut s))
         .is_err()
     {
@@ -477,8 +477,9 @@ pub(crate) fn get_cpu_frequency(cpu_core_index: usize) -> u64 {
 #[allow(unused_assignments)]
 pub(crate) fn get_physical_core_count() -> Option<usize> {
     let mut s = String::new();
-    if let Err(_e) = File::open("/proc/cpuinfo").and_then(|mut f| f.read_to_string(&mut s)) {
-        sysinfo_debug!("Cannot read `/proc/cpuinfo` file: {:?}", _e);
+    let path = super::utils::path_with_prefix("/proc/cpuinfo");
+    if let Err(_e) = File::open(&path).and_then(|mut f| f.read_to_string(&mut s)) {
+        sysinfo_debug!("Cannot read `{}` file: {:?}", path.display(), _e);
         return None;
     }
 
@@ -756,7 +757,7 @@ fn get_arm_part(implementer: u32, part: u32) -> Option<&'static str> {
 /// Returns the brand/vendor string for the first CPU (which should be the same for all CPUs).
 pub(crate) fn get_vendor_id_and_brand() -> HashMap<usize, (String, String)> {
     let mut s = String::new();
-    if File::open("/proc/cpuinfo")
+    if File::open(super::utils::path_with_prefix("/proc/cpuinfo"))
         .and_then(|mut f| f.read_to_string(&mut s))
         .is_err()
     {

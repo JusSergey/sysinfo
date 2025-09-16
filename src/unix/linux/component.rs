@@ -434,7 +434,7 @@ impl ComponentsInner {
     }
 
     pub(crate) fn refresh(&mut self) {
-        self.refresh_from_sys_class_path(Path::new("/sys/class"));
+        self.refresh_from_sys_class_path(&super::utils::path_with_prefix("/sys/class"));
     }
 
     fn refresh_from_sys_class_path(&mut self, path: &Path) {
