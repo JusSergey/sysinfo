@@ -271,7 +271,7 @@ impl CpuValues {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub(crate) struct CpuUsage {
     percent: f32,
     old_values: CpuValues,
@@ -362,8 +362,9 @@ impl CpuUsage {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct CpuInner {
-    usage: CpuUsage,
+    pub usage: CpuUsage,
     pub(crate) name: String,
     pub(crate) frequency: u64,
     pub(crate) vendor_id: String,
